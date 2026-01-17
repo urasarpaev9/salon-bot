@@ -9,7 +9,7 @@ from telegram.ext import (
     Application,
     CommandHandler,
     MessageHandler,
-    CallbackQueryHandler,
+    CallbackQueryandler,
     ContextTypes,
     filters
 )
@@ -19,15 +19,17 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN не задан в переменных окружения!")
 
-# Список разрешённых ID (замените на свои)
+# Список разрешённых пользователей (только они могут стать мастерами)
 ALLOWED_MASTER_IDS = {961734387, 6704791903}  # ← ЗАМЕНИ НА СВОЙ TELEGRAM ID!
 
 # === Инициализация базы данных ===
 def init_db():
     conn = sqlite3.connect('salon.db', check_same_thread=False)
     c = conn.cursor()
+    # Добавлено поле telegram_user_id
     c.execute('''CREATE TABLE IF NOT EXISTS masters (
         id INTEGER PRIMARY KEY,
+        telegram_user_id INTEGER UNIQUE,
         name TEXT,
         photo_url TEXT,
         services TEXT
@@ -93,11 +95,21 @@ def api_available_slots(master_id):
             })
     return jsonify(result)
 
-# 👇 НОВЫЙ МАРШРУТ: МОИ ЗАПИСИ 👇
-@app_flask.route('/api/my-bookings/<int:master_id>')
-def api_my_bookings(master_id):
+# 👇 НОВЫЙ МАРШРУТ: записи по user_id 👇
+@app_flask.route('/api/my-bookings-by-user/<int:user_id>')
+def api_my_bookings_by_user(user_id):
     conn = sqlite3.connect('salon.db')
     conn.row_factory = sqlite3.Row
+    
+    master_row = conn.execute(
+        "SELECT id FROM masters WHERE telegram_user_id = ?", (user_id,)
+    ).fetchone()
+    
+    if not master_row:
+        conn.close()
+        return jsonify([])
+    
+    master_id = master_row["id"]
     bookings = conn.execute("""
         SELECT client_name, client_phone, date, time 
         FROM bookings 
@@ -126,9 +138,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if user_id in ALLOWED_MASTER_IDS:
         keyboard.append([InlineKeyboardButton("Стать мастером", callback_data="register")])
-        # 🔑 Укажи свой ID мастера (посмотри в базе или через /api/masters)
-        bookings_url = f"https://admin-panel-rho-indol.vercel.app/bookings.html?master_id={MASTER_ID}"
-        bookings_url = f"https://admin-panel-rho-indol.vercel.app ={MASTER_ID}"
+        # Автоматически передаём user_id
+        bookings_url = f"https://admin-panel-rho-indol.vercel.app={user_id}"
         keyboard.append([InlineKeyboardButton("Мои записи", web_app={"url": bookings_url})])
     
     await update.message.reply_text(
@@ -162,8 +173,9 @@ async def handle_webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE)
             
             conn = sqlite3.connect('salon.db')
             c = conn.cursor()
-            c.execute("INSERT INTO masters (name, photo_url, services) VALUES (?, ?, ?)",
-                      (data["name"], data["photo_url"].strip(), json.dumps(data["services"])))
+            # Сохраняем telegram_user_id!
+            c.execute("INSERT INTO masters (telegram_user_id, name, photo_url, services) VALUES (?, ?, ?, ?)",
+                      (user_id, data["name"], data["photo_url"].strip(), json.dumps(data["services"])))
             master_id = c.lastrowid
             for day in data["schedule"]:
                 times_clean = [t.strip() for t in day["times"]]
@@ -186,7 +198,7 @@ async def handle_webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 # === Запуск ===
 def run_flask():
-    port = int(os.getenv("PORT", 5000))
+    port = int(os.getenv("PORT", 10000))
     app_flask.run(host='0.0.0.0', port=port)
 
 def main():
