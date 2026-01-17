@@ -1,0 +1,95 @@
+﻿<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Мои записи</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root {
+      --primary: #ff6b9d;
+      --bg: #f9f9f9;
+      --card: #ffffff;
+      --text: #333333;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      padding: 16px;
+    }
+    .container { max-width: 500px; margin: 0 auto; }
+    h1 { text-align: center; margin: 16px 0 24px; font-weight: 600; font-size: 20px; }
+
+    .booking-card {
+      background: white;
+      padding: 16px;
+      border-radius: 12px;
+      margin-bottom: 12px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+    }
+    .booking-date { font-weight: bold; color: var(--primary); }
+    .booking-time { font-size: 18px; margin: 4px 0; }
+    .booking-client { color: #333; }
+    .booking-phone { color: #666; font-size: 14px; }
+
+    .no-bookings { text-align: center; color: #666; margin-top: 32px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Мои записи</h1>
+    <div id="bookingsList"></div>
+  </div>
+
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const MASTER_ID = urlParams.get('master_id');
+
+    if (!MASTER_ID) {
+      document.getElementById("bookingsList").innerHTML = 
+        '<div class="no-bookings">Не указан ID мастера</div>';
+    } else {
+      loadBookings();
+    }
+
+    async function loadBookings() {
+      try {
+        const API_BASE = "https://salon-bot-byzq.onrender.com"; // ← замени на свой Render URL!
+        const res = await fetch(`${API_BASE}/api/my-bookings/${MASTER_ID}`);
+        const bookings = await res.json();
+        renderBookings(bookings);
+      } catch (e) {
+        document.getElementById("bookingsList").innerHTML = 
+          '<div class="no-bookings">Ошибка загрузки</div>';
+      }
+    }
+
+    function renderBookings(bookings) {
+      const el = document.getElementById("bookingsList");
+      if (bookings.length === 0) {
+        el.innerHTML = '<div class="no-bookings">Нет записей</div>';
+        return;
+      }
+
+      el.innerHTML = bookings.map(b => `
+        <div class="booking-card">
+          <div class="booking-date">${formatDate(b.date)}</div>
+          <div class="booking-time">${b.time}</div>
+          <div class="booking-client">Клиент: ${b.client_name}</div>
+          <div class="booking-phone">Телефон: ${b.client_phone}</div>
+        </div>
+      `).join('');
+    }
+
+    function formatDate(dateStr) {
+      const d = new Date(dateStr);
+      return d.toLocaleDateString('ru-RU', { 
+        day: 'numeric', 
+        month: 'long',
+        weekday: 'short'
+      });
+    }
+  </script>
+</body>
+</html>

@@ -20,7 +20,7 @@ if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN не задан в переменных окружения!")
 
 # Список разрешённых ID (замените на свои)
-ALLOWED_MASTER_IDS = {6704791903, 961734387}  # ← ЗАМЕНИ НА СВОЙ TELEGRAM ID!
+ALLOWED_MASTER_IDS = {961734387, 6704791903}  # ← ЗАМЕНИ НА СВОЙ TELEGRAM ID!
 
 # === Инициализация базы данных ===
 def init_db():
@@ -75,17 +75,12 @@ def api_masters():
 def api_available_slots(master_id):
     conn = sqlite3.connect('salon.db')
     c = conn.cursor()
-    
-    # Получаем ВСЁ расписание мастера
     c.execute("SELECT date, time_slots FROM schedule WHERE master_id = ?", (master_id,))
     schedule_rows = c.fetchall()
-    
-    # Получаем ЗАНЯТЫЕ слоты
     c.execute("SELECT date, time FROM bookings WHERE master_id = ?", (master_id,))
     booked = set((row[0], row[1].strip()) for row in c.fetchall())
     conn.close()
 
-    # Формируем полный список слотов с флагом доступности
     result = {}
     for date, time_slots_json in schedule_rows:
         time_slots = json.loads(time_slots_json)
@@ -98,6 +93,26 @@ def api_available_slots(master_id):
             })
     return jsonify(result)
 
+# 👇 НОВЫЙ МАРШРУТ: МОИ ЗАПИСИ 👇
+@app_flask.route('/api/my-bookings/<int:master_id>')
+def api_my_bookings(master_id):
+    conn = sqlite3.connect('salon.db')
+    conn.row_factory = sqlite3.Row
+    bookings = conn.execute("""
+        SELECT client_name, client_phone, date, time 
+        FROM bookings 
+        WHERE master_id = ? 
+        ORDER BY date, time
+    """, (master_id,)).fetchall()
+    conn.close()
+    
+    return jsonify([{
+        "client_name": b["client_name"],
+        "client_phone": b["client_phone"],
+        "date": b["date"],
+        "time": b["time"]
+    } for b in bookings])
+
 @app_flask.route('/')
 def home():
     return {"status": "Salon Bot API is running"}
@@ -109,9 +124,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("Записаться", web_app={"url": "https://bot-regis.vercel.app"})]
     ]
     
-    # Кнопка "Стать мастером" только для разрешённых
     if user_id in ALLOWED_MASTER_IDS:
         keyboard.append([InlineKeyboardButton("Стать мастером", callback_data="register")])
+        # 🔑 Укажи свой ID мастера (посмотри в базе или через /api/masters)
+        MASTER_ID = 6704791903, 961734387  # ← ЗАМЕНИ НА СВОЙ ID!
+        bookings_url = f"https://твоя-админка.vercel.app/bookings.html?master_id={MASTER_ID}"
+        keyboard.append([InlineKeyboardButton("Мои записи", web_app={"url": bookings_url})])
     
     await update.message.reply_text(
         "Добро пожаловать! Выберите действие:",
@@ -138,27 +156,23 @@ async def handle_webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE)
         data = json.loads(raw_data)
 
         if data.get("is_master_registration"):
-            # Проверка прав
             if user_id not in ALLOWED_MASTER_IDS:
                 await update.message.reply_text("❌ У вас нет прав на регистрацию мастера.")
                 return
             
-            # Сохраняем мастера
             conn = sqlite3.connect('salon.db')
             c = conn.cursor()
             c.execute("INSERT INTO masters (name, photo_url, services) VALUES (?, ?, ?)",
                       (data["name"], data["photo_url"].strip(), json.dumps(data["services"])))
             master_id = c.lastrowid
-            # Сохраняем расписание
             for day in data["schedule"]:
                 times_clean = [t.strip() for t in day["times"]]
                 c.execute("INSERT INTO schedule (master_id, date, time_slots) VALUES (?, ?, ?)",
                           (master_id, day["date"], json.dumps(times_clean)))
             conn.commit()
             conn.close()
-            await update.message.reply_text("✅ Вы успешно зарегистрированы как мастер!")
+            await update.message.reply_text(f"✅ Вы успешно зарегистрированы как мастер! Ваш ID: {master_id}")
         else:
-            # Запись клиента
             conn = sqlite3.connect('salon.db')
             c = conn.cursor()
             c.execute("INSERT INTO bookings (master_id, client_name, client_phone, date, time) VALUES (?, ?, ?, ?, ?)",
