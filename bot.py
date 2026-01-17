@@ -1,4 +1,5 @@
 ﻿import os
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 from telegram.ext import Application, CommandHandler, ContextTypes
 
 async def start(update, context):
