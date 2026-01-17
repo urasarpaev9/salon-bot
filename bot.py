@@ -62,6 +62,12 @@ def api_masters():
         "services": json.loads(m["services"])
     } for m in masters])
 
+@app_flask.after_request
+def after_request(response):
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+    return response
+
 @app_flask.route('/api/available-slots/<int:master_id>')
 def api_available_slots(master_id):
     conn = sqlite3.connect('salon.db')
