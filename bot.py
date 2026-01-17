@@ -127,7 +127,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_id in ALLOWED_MASTER_IDS:
         keyboard.append([InlineKeyboardButton("Стать мастером", callback_data="register")])
         # 🔑 Укажи свой ID мастера (посмотри в базе или через /api/masters)
-        MASTER_ID = 6704791903, 961734387  # ← ЗАМЕНИ НА СВОЙ ID!
+        bookings_url = f"https://admin-panel-rho-indol.vercel.app/bookings.html?master_id={MASTER_ID}"
         bookings_url = f"https://admin-panel-rho-indol.vercel.app ={MASTER_ID}"
         keyboard.append([InlineKeyboardButton("Мои записи", web_app={"url": bookings_url})])
     
