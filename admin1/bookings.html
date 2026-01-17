@@ -44,11 +44,11 @@
 
   <script>
     const urlParams = new URLSearchParams(window.location.search);
-    const MASTER_ID = urlParams.get('master_id');
+    const USER_ID = urlParams.get('user_id');
 
-    if (!MASTER_ID) {
+    if (!USER_ID || isNaN(USER_ID)) {
       document.getElementById("bookingsList").innerHTML = 
-        '<div class="no-bookings">Не указан ID мастера</div>';
+        '<div class="no-bookings">Неверный ID пользователя</div>';
     } else {
       loadBookings();
     }
@@ -56,12 +56,13 @@
     async function loadBookings() {
       try {
         const API_BASE = "https://salon-bot-byzq.onrender.com"; // ← замени на свой Render URL!
-        const res = await fetch(`${API_BASE}/api/my-bookings/${MASTER_ID}`);
+        const res = await fetch(`${API_BASE}/api/my-bookings-by-user/${USER_ID}`);
         const bookings = await res.json();
         renderBookings(bookings);
       } catch (e) {
+        console.error(e);
         document.getElementById("bookingsList").innerHTML = 
-          '<div class="no-bookings">Ошибка загрузки</div>';
+          '<div class="no-bookings">Ошибка загрузки записей</div>';
       }
     }
 
@@ -85,9 +86,9 @@
     function formatDate(dateStr) {
       const d = new Date(dateStr);
       return d.toLocaleDateString('ru-RU', { 
+        weekday: 'short',
         day: 'numeric', 
-        month: 'long',
-        weekday: 'short'
+        month: 'long'
       });
     }
   </script>
