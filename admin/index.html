@@ -1,0 +1,206 @@
+﻿<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Мастер: Расписание</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root {
+      --primary: #4CAF50;
+      --bg: #f9f9f9;
+      --card: #ffffff;
+      --text: #333333;
+      --border: #e0e0e0;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      padding: 16px;
+    }
+    .container { max-width: 500px; margin: 0 auto; }
+    h1 { text-align: center; margin: 16px 0 24px; font-weight: 600; font-size: 20px; }
+    input, textarea {
+      width: 100%; padding: 14px; margin: 8px 0; border: 1px solid var(--border);
+      border-radius: 12px; font-size: 16px; background: white;
+    }
+    textarea { min-height: 60px; }
+
+    .day-list { margin: 16px 0; }
+    .day-item {
+      background: white; padding: 14px; border-radius: 12px; margin: 8px 0;
+      display: flex; justify-content: space-between; align-items: center;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+    }
+    .remove-btn {
+      background: #ff6b6b; color: white; border: none;
+      width: 24px; height: 24px; border-radius: 50%;
+      font-size: 14px; cursor: pointer;
+    }
+
+    .btn {
+      width: 100%; padding: 14px; border: none;
+      border-radius: 14px; font-size: 16px; font-weight: 600; cursor: pointer;
+      margin: 12px 0;
+    }
+    .btn-add { background: #2196F3; color: white; }
+    .btn-save { background: var(--primary); color: white; }
+
+    .modal {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.5); display: none; z-index: 100;
+      justify-content: center; align-items: flex-end;
+    }
+    .modal-content {
+      background: white; width: 100%; max-width: 500px; border-radius: 20px 20px 0 0;
+      padding: 24px; max-height: 80vh; overflow-y: auto;
+    }
+    .modal-title { font-size: 18px; margin-bottom: 20px; text-align: center; }
+    .hours-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+      gap: 10px; margin-top: 16px;
+    }
+    .hour {
+      text-align: center; padding: 10px; background: #f0f0f0;
+      border-radius: 10px; cursor: pointer;
+    }
+    .hour.selected { background: var(--primary); color: white; }
+    .close-modal {
+      position: absolute; top: 16px; right: 16px; font-size: 24px; cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Регистрация мастера</h1>
+    
+    <input id="name" placeholder="Ваше имя" />
+    <input id="photo" placeholder="Ссылка на фото (imgbb.com)" value="https://i.imgur.com/8KmWnJQ.jpg" />
+    <textarea id="services" placeholder="Услуги через запятую: Маникюр, Педикюр"></textarea>
+
+    <h2 style="margin: 24px 0 12px; font-size: 18px;">Ваши дни</h2>
+    <div class="day-list" id="dayList"></div>
+    
+    <button class="btn btn-add" onclick="openDateSelector()">+ Добавить день</button>
+    <button class="btn btn-save" onclick="submit()">Сохранить профиль</button>
+  </div>
+
+  <div class="modal" id="modal">
+    <div class="modal-content">
+      <div class="close-modal" onclick="closeModal()">×</div>
+      <div id="modalContent"></div>
+    </div>
+  </div>
+
+  <script>
+    let schedule = [];
+    let currentSelectedHours = [];
+
+    function renderDayList() {
+      const el = document.getElementById("dayList");
+      el.innerHTML = schedule.map((item, i) => `
+        <div class="day-item">
+          <div><strong>${formatDate(item.date)}</strong><br>${item.times.join(', ')}</div>
+          <button class="remove-btn" onclick="removeDay(${i})">×</button>
+        </div>
+      `).join('');
+    }
+
+    function formatDate(dateStr) {
+      const d = new Date(dateStr);
+      return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+    }
+
+    function openDateSelector() {
+      document.getElementById("modalContent").innerHTML = `
+        <div class="modal-title">Выберите дату</div>
+        <input type="date" id="modalDate" style="width:100%;padding:12px;border-radius:12px;border:1px solid #ddd;font-size:16px;">
+      `;
+      document.getElementById("modal").style.display = "flex";
+      
+      document.getElementById("modalDate").onchange = (e) => {
+        const date = e.target.value;
+        if (date) showTimeSelector(date);
+      };
+    }
+
+    function showTimeSelector(date) {
+      currentSelectedHours = []; // сброс
+      const allHours = Array.from({length: 12}, (_, i) => (9 + i) + ":00");
+
+      document.getElementById("modalContent").innerHTML = `
+        <div class="modal-title">Выберите время (${formatDate(date)})</div>
+        <div class="hours-grid" id="timeGrid"></div>
+        <button class="btn" style="margin-top:20px;background:#4CAF50;" onclick="confirmTimeSlot('${date}')">Готово</button>
+      `;
+
+      const grid = document.getElementById("timeGrid");
+      grid.innerHTML = allHours.map(h => `
+        <div class="hour" data-hour="${h}" onclick="toggleHour(this, '${h}')">${h}</div>
+      `).join('');
+    }
+
+    function toggleHour(el, hour) {
+      const index = currentSelectedHours.indexOf(hour);
+      if (index === -1) {
+        currentSelectedHours.push(hour);
+        el.classList.add("selected");
+      } else {
+        currentSelectedHours.splice(index, 1);
+        el.classList.remove("selected");
+      }
+    }
+
+    function confirmTimeSlot(date) {
+      if (currentSelectedHours.length > 0) {
+        const existsIndex = schedule.findIndex(s => s.date === date);
+        if (existsIndex >= 0) {
+          schedule[existsIndex].times = [...currentSelectedHours];
+        } else {
+          schedule.push({ date, times: [...currentSelectedHours] });
+        }
+        renderDayList();
+      }
+      closeModal();
+    }
+
+    function removeDay(index) {
+      schedule.splice(index, 1);
+      renderDayList();
+    }
+
+    function closeModal() {
+      document.getElementById("modal").style.display = "none";
+    }
+
+    function submit() {
+      const name = document.getElementById("name").value.trim();
+      const photo = document.getElementById("photo").value.trim();
+      const services = document.getElementById("services").value
+        .split(",").map(s => s.trim()).filter(Boolean);
+
+      if (!name || !services.length) {
+        alert("Заполните имя и услуги!");
+        return;
+      }
+
+      if (schedule.length === 0) {
+        alert("Добавьте хотя бы один день!");
+        return;
+      }
+
+      Telegram.WebApp.sendData(JSON.stringify({
+        is_master_registration: true,
+        name,
+        photo_url: photo || "https://i.imgur.com/8KmWnJQ.jpg",
+        services,
+        schedule
+      }));
+      Telegram.WebApp.close();
+    }
+
+    renderDayList();
+  </script>
+</body>
+</html>

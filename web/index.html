@@ -1,0 +1,232 @@
+﻿<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Запись к мастеру</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root {
+      --primary: #ff6b9d;
+      --bg: #f9f9f9;
+      --card: #ffffff;
+      --text: #333333;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      padding: 16px;
+    }
+    .container { max-width: 500px; margin: 0 auto; }
+    h1 { text-align: center; margin: 16px 0 24px; font-weight: 600; font-size: 20px; }
+
+    /* Мастера */
+    .masters-grid {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: 1fr;
+    }
+    .master-card {
+      background: var(--card);
+      border-radius: 16px;
+      padding: 16px;
+      display: flex;
+      gap: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      cursor: pointer;
+    }
+    .master-card img {
+      width: 70px; height: 70px; border-radius: 50%; object-fit: cover;
+    }
+    .master-info h3 { margin-bottom: 6px; font-size: 18px; }
+    .master-info p { color: #666; font-size: 14px; }
+
+    /* Выбор времени */
+    .booking-view { display: none; }
+    .back-btn {
+      background: none; border: none; font-size: 18px; margin-bottom: 16px;
+      color: #2196F3; cursor: pointer;
+    }
+    .date-list {
+      display: grid;
+      gap: 12px;
+    }
+    .date-item {
+      background: white; padding: 14px; border-radius: 12px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+    }
+    .time-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .time-slot {
+      text-align: center; padding: 8px; background: #f0f0f0;
+      border-radius: 8px; cursor: pointer;
+    }
+    .time-slot:hover { background: #e0e0e0; }
+    .time-slot.selected { background: var(--primary); color: white; }
+
+    /* Форма */
+    input, button {
+      width: 100%; padding: 14px; margin: 12px 0;
+      border: 1px solid #ddd; border-radius: 12px; font-size: 16px;
+    }
+    button { background: var(--primary); color: white; border: none; cursor: pointer; }
+    button:disabled { background: #ccc; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Список мастеров -->
+    <div id="mastersView">
+      <h1>Выберите мастера</h1>
+      <div class="masters-grid" id="mastersGrid"></div>
+    </div>
+
+    <!-- Выбор времени -->
+    <div id="bookingView" class="booking-view">
+      <button class="back-btn" onclick="showMasters()">← Назад</button>
+      <h2 id="masterName">Запись к ...</h2>
+      
+      <div class="date-list" id="dateList"></div>
+      
+      <input type="text" id="clientName" placeholder="Ваше имя" style="display:none;">
+      <input type="tel" id="clientPhone" placeholder="Телефон" style="display:none;">
+      <button id="bookBtn" onclick="submitBooking()" style="display:none;">Записаться</button>
+    </div>
+  </div>
+
+  <script>
+    // === КОНФИГУРАЦИЯ ===
+    const API_BASE = "https://salon-bot-1n0j.onrender.com"; // ← замени на свой Render URL позже!
+
+    let selectedMaster = null;
+    let selectedDate = null;
+    let selectedTime = null;
+
+    // === ЗАГРУЗКА МАСТЕРОВ ===
+    async function loadMasters() {
+      try {
+        const res = await fetch(`${API_BASE}/api/masters`);
+        const masters = await res.json();
+        renderMasters(masters);
+      } catch (e) {
+        alert("Ошибка загрузки мастеров");
+      }
+    }
+
+    function renderMasters(masters) {
+      const el = document.getElementById("mastersGrid");
+      if (masters.length === 0) {
+        el.innerHTML = "<p>Нет доступных мастеров</p>";
+        return;
+      }
+      el.innerHTML = masters.map(m => `
+        <div class="master-card" onclick="selectMaster(${m.id}, '${m.name}', '${m.photo_url}')">
+          <img src="${m.photo_url}" alt="${m.name}">
+          <div class="master-info">
+            <h3>${m.name}</h3>
+            <p>${m.services.join(', ')}</p>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // === ВЫБОР МАСТЕРА ===
+    async function selectMaster(id, name, photo) {
+      selectedMaster = { id, name, photo };
+      document.getElementById("masterName").textContent = `Запись к ${name}`;
+      
+      // Загружаем свободные слоты
+      try {
+        const res = await fetch(`${API_BASE}/api/available-slots/${id}`);
+        const slots = await res.json();
+        renderDates(slots);
+        showBooking();
+      } catch (e) {
+        alert("Ошибка загрузки расписания");
+      }
+    }
+
+    function renderDates(slots) {
+      const el = document.getElementById("dateList");
+      const dates = Object.keys(slots).sort();
+      
+      if (dates.length === 0) {
+        el.innerHTML = "<p>Нет свободных слотов</p>";
+        return;
+      }
+
+      el.innerHTML = dates.map(date => `
+        <div class="date-item">
+          <strong>${formatDate(date)}</strong>
+          <div class="time-grid" id="time-${date}">
+            ${slots[date].map(t => `
+              <div class="time-slot" onclick="selectTime('${date}', '${t}')">${t}</div>
+            `).join('')}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function formatDate(dateStr) {
+      const d = new Date(dateStr);
+      return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+    }
+
+    // === ВЫБОР ВРЕМЕНИ ===
+    function selectTime(date, time) {
+      // Снимаем выделение со всех
+      document.querySelectorAll('.time-slot').forEach(el => el.classList.remove('selected'));
+      // Выделяем текущий
+      event.target.classList.add('selected');
+      
+      selectedDate = date;
+      selectedTime = time;
+      
+      // Показываем форму
+      document.getElementById("clientName").style.display = "block";
+      document.getElementById("clientPhone").style.display = "block";
+      document.getElementById("bookBtn").style.display = "block";
+    }
+
+    // === ОТПРАВКА ===
+    function submitBooking() {
+      const name = document.getElementById("clientName").value.trim();
+      const phone = document.getElementById("clientPhone").value.trim();
+      
+      if (!name || !phone || !selectedMaster || !selectedDate || !selectedTime) {
+        alert("Заполните все поля");
+        return;
+      }
+
+      Telegram.WebApp.sendData(JSON.stringify({
+        master_id: selectedMaster.id,
+        date: selectedDate,
+        time: selectedTime,
+        service: selectedMaster.services?.[0] || "Услуга",
+        name,
+        phone
+      }));
+      Telegram.WebApp.close();
+    }
+
+    // === НАВИГАЦИЯ ===
+    function showMasters() {
+      document.getElementById("mastersView").style.display = "block";
+      document.getElementById("bookingView").style.display = "none";
+    }
+
+    function showBooking() {
+      document.getElementById("mastersView").style.display = "none";
+      document.getElementById("bookingView").style.display = "block";
+    }
+
+    // === СТАРТ ===
+    loadMasters();
+  </script>
+</body>
+</html>

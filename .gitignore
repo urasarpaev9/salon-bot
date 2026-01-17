@@ -1,0 +1,19 @@
+# IDE
+.vs/
+.vscode/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Python
+__pycache__/
+*.pyc
+.env
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
