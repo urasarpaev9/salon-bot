@@ -6,6 +6,12 @@
   <title>Запись к мастеру</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
+
+  .time-slot.unavailable {
+    background: #e0e0e0 !important;
+    color: #999 !important;
+    cursor: default !important;
+  }
     :root {
       --primary: #ff6b9d;
       --bg: #f9f9f9;
@@ -171,25 +177,28 @@
     }
 
     function renderDates(slots) {
-      const el = document.getElementById("dateList");
-      const dates = Object.keys(slots).sort();
-      
-      if (dates.length === 0) {
-        el.innerHTML = "<p>Нет свободных слотов</p>";
-        return;
-      }
+  const el = document.getElementById("dateList");
+  const dates = Object.keys(slots).sort();
+  
+  if (dates.length === 0) {
+    el.innerHTML = "<p>Нет расписания</p>";
+    return;
+  }
 
-      el.innerHTML = dates.map(date => `
-        <div class="date-item">
-          <strong>${formatDate(date)}</strong>
-          <div class="time-grid" id="time-${date}">
-            ${slots[date].map(t => `
-              <div class="time-slot" onclick="selectTime('${date}', '${t}')">${t}</div>
-            `).join('')}
+  el.innerHTML = dates.map(date => `
+    <div class="date-item">
+      <strong>${formatDate(date)}</strong>
+      <div class="time-grid" id="time-${date}">
+        ${slots[date].map(slot => `
+          <div class="time-slot ${slot.available ? '' : 'unavailable'}" 
+               onclick="${slot.available ? `selectTime('${date}', '${slot.time}')` : ''}">
+            ${slot.time}
           </div>
-        </div>
-      `).join('');
-    }
+        `).join('')}
+      </div>
+    </div>
+  `).join('');
+}
 
     function formatDate(dateStr) {
       const d = new Date(dateStr);
