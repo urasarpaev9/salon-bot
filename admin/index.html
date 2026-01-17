@@ -3,15 +3,14 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Мастер: Расписание</title>
+  <title>Регистрация мастера</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
     :root {
-      --primary: #4CAF50;
+      --primary: #ff6b9d;
       --bg: #f9f9f9;
       --card: #ffffff;
       --text: #333333;
-      --border: #e0e0e0;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
     body {
@@ -21,186 +20,160 @@
     }
     .container { max-width: 500px; margin: 0 auto; }
     h1 { text-align: center; margin: 16px 0 24px; font-weight: 600; font-size: 20px; }
-    input, textarea {
-      width: 100%; padding: 14px; margin: 8px 0; border: 1px solid var(--border);
-      border-radius: 12px; font-size: 16px; background: white;
-    }
-    textarea { min-height: 60px; }
 
-    .day-list { margin: 16px 0; }
-    .day-item {
-      background: white; padding: 14px; border-radius: 12px; margin: 8px 0;
-      display: flex; justify-content: space-between; align-items: center;
+    input, textarea, button, select {
+      width: 100%; padding: 14px; margin: 12px 0;
+      border: 1px solid #ddd; border-radius: 12px; font-size: 16px;
+    }
+    button {
+      background: var(--primary); color: white; border: none; cursor: pointer;
+    }
+    button:disabled { background: #ccc; }
+
+    .service-item, .schedule-item {
+      background: white; padding: 16px; border-radius: 12px; margin-bottom: 12px;
       box-shadow: 0 1px 4px rgba(0,0,0,0.05);
     }
     .remove-btn {
-      background: #ff6b6b; color: white; border: none;
-      width: 24px; height: 24px; border-radius: 50%;
-      font-size: 14px; cursor: pointer;
+      background: #ff6b6b; color: white; border: none; padding: 6px 12px;
+      border-radius: 8px; font-size: 14px; cursor: pointer; margin-top: 8px;
     }
 
-    .btn {
-      width: 100%; padding: 14px; border: none;
-      border-radius: 14px; font-size: 16px; font-weight: 600; cursor: pointer;
-      margin: 12px 0;
-    }
-    .btn-add { background: #2196F3; color: white; }
-    .btn-save { background: var(--primary); color: white; }
-
-    .modal {
-      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(0,0,0,0.5); display: none; z-index: 100;
-      justify-content: center; align-items: flex-end;
-    }
-    .modal-content {
-      background: white; width: 100%; max-width: 500px; border-radius: 20px 20px 0 0;
-      padding: 24px; max-height: 80vh; overflow-y: auto;
-    }
-    .modal-title { font-size: 18px; margin-bottom: 20px; text-align: center; }
-    .hours-grid {
-      display: grid; grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
-      gap: 10px; margin-top: 16px;
-    }
-    .hour {
-      text-align: center; padding: 10px; background: #f0f0f0;
-      border-radius: 10px; cursor: pointer;
-    }
-    .hour.selected { background: var(--primary); color: white; }
-    .close-modal {
-      position: absolute; top: 16px; right: 16px; font-size: 24px; cursor: pointer;
-    }
+    .hidden { display: none; }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>Регистрация мастера</h1>
     
-    <input id="name" placeholder="Ваше имя" />
-    <input id="photo" placeholder="Ссылка на фото (imgbb.com)" value="https://i.imgur.com/8KmWnJQ.jpg" />
-    <textarea id="services" placeholder="Услуги через запятую: Маникюр, Педикюр"></textarea>
+    <input type="text" id="name" placeholder="Имя мастера" required />
+    <input type="url" id="photoUrl" placeholder="Ссылка на фото (опционально)" />
 
-    <h2 style="margin: 24px 0 12px; font-size: 18px;">Ваши дни</h2>
-    <div class="day-list" id="dayList"></div>
-    
-    <button class="btn btn-add" onclick="openDateSelector()">+ Добавить день</button>
-    <button class="btn btn-save" onclick="submit()">Сохранить профиль</button>
-  </div>
+    <h3>Услуги</h3>
+    <div id="servicesList"></div>
+    <button type="button" onclick="addService()">+ Добавить услугу</button>
 
-  <div class="modal" id="modal">
-    <div class="modal-content">
-      <div class="close-modal" onclick="closeModal()">×</div>
-      <div id="modalContent"></div>
-    </div>
+    <h3>Расписание</h3>
+    <div id="scheduleList"></div>
+    <button type="button" onclick="addScheduleDay()">+ Добавить день</button>
+
+    <button id="submitBtn" onclick="submitMaster()">Сохранить</button>
   </div>
 
   <script>
+    // === Инициализация ===
+    let services = ["Маникюр"];
     let schedule = [];
-    let currentSelectedHours = [];
 
-    function renderDayList() {
-      const el = document.getElementById("dayList");
-      el.innerHTML = schedule.map((item, i) => `
-        <div class="day-item">
-          <div><strong>${formatDate(item.date)}</strong><br>${item.times.join(', ')}</div>
-          <button class="remove-btn" onclick="removeDay(${i})">×</button>
+    function addService() {
+      services.push("Новая услуга");
+      renderServices();
+    }
+
+    function removeService(index) {
+      services.splice(index, 1);
+      renderServices();
+    }
+
+    function renderServices() {
+      const el = document.getElementById("servicesList");
+      el.innerHTML = services.map((s, i) => `
+        <div class="service-item">
+          <input type="text" value="${s}" oninput="services[${i}] = this.value" placeholder="Услуга" required />
+          <button type="button" class="remove-btn" onclick="removeService(${i})">Удалить</button>
         </div>
       `).join('');
     }
 
-    function formatDate(dateStr) {
-      const d = new Date(dateStr);
-      return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+    function addScheduleDay() {
+      const today = new Date().toISOString().split('T')[0];
+      schedule.push({ date: today, times: ["10:00", "14:00"] });
+      renderSchedule();
     }
 
-    function openDateSelector() {
-      document.getElementById("modalContent").innerHTML = `
-        <div class="modal-title">Выберите дату</div>
-        <input type="date" id="modalDate" style="width:100%;padding:12px;border-radius:12px;border:1px solid #ddd;font-size:16px;">
-      `;
-      document.getElementById("modal").style.display = "flex";
-      
-      document.getElementById("modalDate").onchange = (e) => {
-        const date = e.target.value;
-        if (date) showTimeSelector(date);
-      };
+    function removeScheduleDay(index) {
+      schedule.splice(index, 1);
+      renderSchedule();
     }
 
-    function showTimeSelector(date) {
-      currentSelectedHours = []; // сброс
-      const allHours = Array.from({length: 12}, (_, i) => (9 + i) + ":00");
+    function addTimeToDay(dayIndex) {
+      schedule[dayIndex].times.push("10:00");
+      renderSchedule();
+    }
 
-      document.getElementById("modalContent").innerHTML = `
-        <div class="modal-title">Выберите время (${formatDate(date)})</div>
-        <div class="hours-grid" id="timeGrid"></div>
-        <button class="btn" style="margin-top:20px;background:#4CAF50;" onclick="confirmTimeSlot('${date}')">Готово</button>
-      `;
+    function removeTimeFromDay(dayIndex, timeIndex) {
+      schedule[dayIndex].times.splice(timeIndex, 1);
+      renderSchedule();
+    }
 
-      const grid = document.getElementById("timeGrid");
-      grid.innerHTML = allHours.map(h => `
-        <div class="hour" data-hour="${h}" onclick="toggleHour(this, '${h}')">${h}</div>
+    function renderSchedule() {
+      const el = document.getElementById("scheduleList");
+      el.innerHTML = schedule.map((day, i) => `
+        <div class="schedule-item">
+          <input type="date" value="${day.date}" oninput="schedule[${i}].date = this.value" required />
+          <div>
+            ${day.times.map((t, ti) => `
+              <div style="display:flex; gap:8px; margin:6px 0;">
+                <input type="time" value="${t}" oninput="schedule[${i}].times[${ti}] = this.value" required />
+                <button type="button" class="remove-btn" style="padding:4px 8px;" onclick="removeTimeFromDay(${i}, ${ti})">–</button>
+              </div>
+            `).join('')}
+            <button type="button" class="remove-btn" style="margin-top:8px;" onclick="addTimeToDay(${i})">+ Время</button>
+          </div>
+          <button type="button" class="remove-btn" style="margin-top:12px;" onclick="removeScheduleDay(${i})">Удалить день</button>
+        </div>
       `).join('');
     }
 
-    function toggleHour(el, hour) {
-      const index = currentSelectedHours.indexOf(hour);
-      if (index === -1) {
-        currentSelectedHours.push(hour);
-        el.classList.add("selected");
-      } else {
-        currentSelectedHours.splice(index, 1);
-        el.classList.remove("selected");
-      }
-    }
-
-    function confirmTimeSlot(date) {
-      if (currentSelectedHours.length > 0) {
-        const existsIndex = schedule.findIndex(s => s.date === date);
-        if (existsIndex >= 0) {
-          schedule[existsIndex].times = [...currentSelectedHours];
-        } else {
-          schedule.push({ date, times: [...currentSelectedHours] });
-        }
-        renderDayList();
-      }
-      closeModal();
-    }
-
-    function removeDay(index) {
-      schedule.splice(index, 1);
-      renderDayList();
-    }
-
-    function closeModal() {
-      document.getElementById("modal").style.display = "none";
-    }
-
-    function submit() {
+    // === Отправка данных ===
+    function submitMaster() {
       const name = document.getElementById("name").value.trim();
-      const photo = document.getElementById("photo").value.trim();
-      const services = document.getElementById("services").value
-        .split(",").map(s => s.trim()).filter(Boolean);
+      if (!name) {
+        alert("Введите имя мастера");
+        return;
+      }
 
-      if (!name || !services.length) {
-        alert("Заполните имя и услуги!");
+      if (services.length === 0) {
+        alert("Добавьте хотя бы одну услугу");
         return;
       }
 
       if (schedule.length === 0) {
-        alert("Добавьте хотя бы один день!");
+        alert("Добавьте хотя бы один день в расписании");
         return;
       }
 
+      // Проверяем, что все времена заполнены
+      for (const day of schedule) {
+        if (!day.date) {
+          alert("Выберите дату");
+          return;
+        }
+        for (const t of day.times) {
+          if (!t) {
+            alert("Заполните все временные слоты");
+            return;
+          }
+        }
+      }
+
+      const photoUrl = document.getElementById("photoUrl").value.trim() ||
+                       "https://i.imgur.com/8KmWnJQ.jpg";
+
       Telegram.WebApp.sendData(JSON.stringify({
         is_master_registration: true,
-        name,
-        photo_url: photo || "https://i.imgur.com/8KmWnJQ.jpg",
-        services,
-        schedule
+        name: name,
+        photo_url: photoUrl,
+        services: services,
+        schedule: schedule
       }));
+
       Telegram.WebApp.close();
     }
 
-    renderDayList();
+    // === Старт ===
+    renderServices();
+    addScheduleDay(); // добавляем один день по умолчанию
   </script>
 </body>
 </html>

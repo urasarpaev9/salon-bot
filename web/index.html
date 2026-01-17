@@ -6,12 +6,6 @@
   <title>Запись к мастеру</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
-
-  .time-slot.unavailable {
-    background: #e0e0e0 !important;
-    color: #999 !important;
-    cursor: default !important;
-  }
     :root {
       --primary: #ff6b9d;
       --bg: #f9f9f9;
@@ -19,25 +13,6 @@
       --text: #333333;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-
-    async def handle_webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    raw_data = update.message.web_app_data.data
-    data = json.loads(raw_data)
-
-    if data.get("is_master_registration"):
-        # Проверяем, разрешено ли пользователю регистрироваться
-        if user_id not in ALLOWED_MASTER_IDS:
-            await update.message.reply_text("❌ У вас нет прав на регистрацию мастера.")
-            return
-        
-        # ... сохранение мастера ...
-        await update.message.reply_text("✅ Вы успешно зарегистрированы как мастер!")
-    else:
-        # ... запись клиента ...
-        await update.message.reply_text("✅ Вы успешно записаны!")
-
-
     body {
       background: var(--bg);
       color: var(--text);
@@ -94,6 +69,13 @@
     .time-slot:hover { background: #e0e0e0; }
     .time-slot.selected { background: var(--primary); color: white; }
 
+    /* Занятые слоты */
+    .time-slot.unavailable {
+      background: #e0e0e0 !important;
+      color: #999 !important;
+      cursor: default !important;
+    }
+
     /* Форма */
     input, button {
       width: 100%; padding: 14px; margin: 12px 0;
@@ -126,7 +108,7 @@
 
   <script>
     // === КОНФИГУРАЦИЯ ===
-    const API_BASE = "https://salon-bot-byzq.onrender.com"; // ← замени на свой Render URL позже!
+    const API_BASE = "https://salon-bot-byzq.onrender.com"; // ← замени на свой Render URL!
 
     let selectedMaster = null;
     let selectedDate = null;
@@ -150,7 +132,7 @@
         return;
       }
       el.innerHTML = masters.map(m => `
-        <div class="master-card" onclick="selectMaster(${m.id}, '${m.name}', '${m.photo_url}')">
+        <div class="master-card" onclick="selectMaster(${m.id}, '${m.name.replace(/'/g, "\\'")}', '${m.photo_url}')">
           <img src="${m.photo_url}" alt="${m.name}">
           <div class="master-info">
             <h3>${m.name}</h3>
@@ -165,7 +147,7 @@
       selectedMaster = { id, name, photo };
       document.getElementById("masterName").textContent = `Запись к ${name}`;
       
-      // Загружаем свободные слоты
+      // Загружаем расписание (все слоты + статус)
       try {
         const res = await fetch(`${API_BASE}/api/available-slots/${id}`);
         const slots = await res.json();
@@ -177,28 +159,28 @@
     }
 
     function renderDates(slots) {
-  const el = document.getElementById("dateList");
-  const dates = Object.keys(slots).sort();
-  
-  if (dates.length === 0) {
-    el.innerHTML = "<p>Нет расписания</p>";
-    return;
-  }
+      const el = document.getElementById("dateList");
+      const dates = Object.keys(slots).sort();
+      
+      if (dates.length === 0) {
+        el.innerHTML = "<p>Нет расписания</p>";
+        return;
+      }
 
-  el.innerHTML = dates.map(date => `
-    <div class="date-item">
-      <strong>${formatDate(date)}</strong>
-      <div class="time-grid" id="time-${date}">
-        ${slots[date].map(slot => `
-          <div class="time-slot ${slot.available ? '' : 'unavailable'}" 
-               onclick="${slot.available ? `selectTime('${date}', '${slot.time}')` : ''}">
-            ${slot.time}
+      el.innerHTML = dates.map(date => `
+        <div class="date-item">
+          <strong>${formatDate(date)}</strong>
+          <div class="time-grid" id="time-${date}">
+            ${slots[date].map(slot => `
+              <div class="time-slot ${slot.available ? '' : 'unavailable'}" 
+                   onclick="${slot.available ? `selectTime('${date}', '${slot.time}')` : ''}">
+                ${slot.time}
+              </div>
+            `).join('')}
           </div>
-        `).join('')}
-      </div>
-    </div>
-  `).join('');
-}
+        </div>
+      `).join('');
+    }
 
     function formatDate(dateStr) {
       const d = new Date(dateStr);
@@ -207,7 +189,7 @@
 
     // === ВЫБОР ВРЕМЕНИ ===
     function selectTime(date, time) {
-      // Снимаем выделение со всех
+      // Снимаем выделение
       document.querySelectorAll('.time-slot').forEach(el => el.classList.remove('selected'));
       // Выделяем текущий
       event.target.classList.add('selected');

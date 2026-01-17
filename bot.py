@@ -20,7 +20,7 @@ if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN не задан в переменных окружения!")
 
 # Список разрешённых ID (замените на свои)
-ALLOWED_MASTER_IDS = {6704791903}  # ← замените на ваш Telegram ID
+ALLOWED_MASTER_IDS = {6704791903, 961734387}  # ← ЗАМЕНИ НА СВОЙ TELEGRAM ID!
 
 # === Инициализация базы данных ===
 def init_db():
@@ -67,7 +67,7 @@ def api_masters():
     return jsonify([{
         "id": m["id"],
         "name": m["name"],
-        "photo_url": m["photo_url"].strip(),  # убираем пробелы
+        "photo_url": m["photo_url"].strip(),
         "services": json.loads(m["services"])
     } for m in masters])
 
@@ -75,19 +75,28 @@ def api_masters():
 def api_available_slots(master_id):
     conn = sqlite3.connect('salon.db')
     c = conn.cursor()
+    
+    # Получаем ВСЁ расписание мастера
     c.execute("SELECT date, time_slots FROM schedule WHERE master_id = ?", (master_id,))
     schedule_rows = c.fetchall()
+    
+    # Получаем ЗАНЯТЫЕ слоты
     c.execute("SELECT date, time FROM bookings WHERE master_id = ?", (master_id,))
-    booked = set((row[0], row[1]) for row in c.fetchall())
+    booked = set((row[0], row[1].strip()) for row in c.fetchall())
     conn.close()
 
-    available = {}
+    # Формируем полный список слотов с флагом доступности
+    result = {}
     for date, time_slots_json in schedule_rows:
         time_slots = json.loads(time_slots_json)
-        free_slots = [t.strip() for t in time_slots if (date, t.strip()) not in booked]
-        if free_slots:
-            available[date] = free_slots
-    return jsonify(available)
+        result[date] = []
+        for t in time_slots:
+            t_clean = t.strip()
+            result[date].append({
+                "time": t_clean,
+                "available": (date, t_clean) not in booked
+            })
+    return jsonify(result)
 
 @app_flask.route('/')
 def home():
@@ -97,7 +106,7 @@ def home():
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     keyboard = [
-        [InlineKeyboardButton("Записаться", web_app={"url": "https://твой-web-app.vercel.app"})]
+        [InlineKeyboardButton("Записаться", web_app={"url": "https://bot-regis.vercel.app"})]
     ]
     
     # Кнопка "Стать мастером" только для разрешённых
@@ -117,7 +126,7 @@ async def register_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup([[
             InlineKeyboardButton(
                 "📝 Зарегистрироваться",
-                web_app={"url": "https://твой-admin.vercel.app"}
+                web_app={"url": "https://admin-bot-zeta.vercel.app"}
             )
         ]])
     )
