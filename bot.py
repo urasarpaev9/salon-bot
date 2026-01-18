@@ -133,13 +133,12 @@ def home():
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     keyboard = [
-        [InlineKeyboardButton("Записаться", web_app={"url": "https://bot-regis.vercel.app"})]
+        [InlineKeyboardButton("Записаться", web_app={"url": "https://bot-regis.vercel.app"})]  # ← без пробелов
     ]
     
     if user_id in ALLOWED_MASTER_IDS:
         keyboard.append([InlineKeyboardButton("Стать мастером", callback_data="register")])
-        # Автоматически передаём user_id
-        bookings_url = f"https://admin-panel-rho-indol.vercel.app/bookings.html?user_id={user_id}"
+        bookings_url = f"https://admin-panel-rho-indol.vercel.app/bookings.html?user_id={user_id}"  # ← без пробелов
         keyboard.append([InlineKeyboardButton("Мои записи", web_app={"url": bookings_url})])
     
     await update.message.reply_text(
@@ -197,11 +196,14 @@ async def handle_webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("❌ Ошибка при обработке данных. Попробуйте снова.")
 
 # === Запуск ===
-def run_flask():
-    port = int(os.getenv("PORT", 10000))
-    app_flask.run(host='0.0.0.0', port=port)
-
 def main():
+    # 👇 ВРЕМЕННЫЙ КОД: УДАЛЯЕМ СТАРУЮ БАЗУ 👇
+    import os
+    if os.path.exists("salon.db"):
+        os.remove("salon.db")
+        print("Старая база salon.db удалена для обновления структуры.")
+    # 👆 ВРЕМЕННЫЙ КОД ЗАКАНЧИВАЕТСЯ 👆
+
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
 
