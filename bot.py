@@ -211,20 +211,43 @@ async def handle_webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("❌ Ошибка при обработке данных.")
 
 # === Запуск ===
-def run_flask():
-    port = int(os.getenv("PORT", 10000))
-    app_flask.run(host='0.0.0.0', port=port)
+def init_db():
+    import os
+    if os.path.exists("salon.db"):
+        os.remove("salon.db")
+        print("🗑️ Старая база удалена")
+
+    conn = sqlite3.connect('salon.db', check_same_thread=False)
+    c = conn.cursor()
+    c.execute('''CREATE TABLE masters (
+        id INTEGER PRIMARY KEY,
+        telegram_user_id INTEGER UNIQUE,
+        name TEXT,
+        photo_url TEXT,
+        services TEXT
+    )''')
+    c.execute('''CREATE TABLE schedule (
+        master_id INTEGER,
+        date TEXT,
+        time_slots TEXT
+    )''')
+    c.execute('''CREATE TABLE bookings (
+        master_id INTEGER,
+        client_name TEXT,
+        client_phone TEXT,
+        date TEXT,
+        time TEXT
+    )''')
+    conn.commit()
+    conn.close()
+    print("✅ База создана")
 
 def main():
-    # Инициализация базы при старте
-    init_db()
-    print("✅ База данных инициализирована")
+    init_db()  # ← ЕДИНСТВЕННЫЙ ВЫЗОВ
 
-    # Запуск Flask в фоне
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
 
-    # Запуск Telegram бота
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, handle_webapp_data))
