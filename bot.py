@@ -175,28 +175,23 @@ async def handle_webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE)
             conn = sqlite3.connect('salon.db', check_same_thread=False)
             c = conn.cursor()
 
-            # Проверяем, не зарегистрирован ли уже
-            c.execute("SELECT id FROM masters WHERE telegram_user_id = ?", (user_id,))
-            existing = c.fetchone()
-            if existing:
-                master_id = existing[0]
-                await update.message.reply_text(f"✅ Вы уже зарегистрированы! Ваш ID: {master_id}")
-            else:
-                c.execute("INSERT INTO masters (telegram_user_id, name, photo_url, services) VALUES (?, ?, ?, ?)",
-                          (user_id, data["name"].strip(), data.get("photo_url", "").strip(), json.dumps(data.get("services", []))))
-                master_id = c.lastrowid
+            # Просто вставляем нового мастера (без проверки дубликатов)
+            c.execute("INSERT INTO masters (telegram_user_id, name, photo_url, services) VALUES (?, ?, ?, ?)",
+                      (user_id, data["name"].strip(), data.get("photo_url", "").strip(), json.dumps(data.get("services", []))))
+            master_id = c.lastrowid
 
-                for day in data.get("schedule", []):
-                    if isinstance(day, dict) and "date" in day and "times" in day:
-                        times_clean = [str(t).strip() for t in day["times"] if str(t).strip()]
-                        if times_clean:
-                            c.execute("INSERT INTO schedule (master_id, date, time_slots) VALUES (?, ?, ?)",
-                                      (master_id, day["date"], json.dumps(times_clean)))
-                await update.message.reply_text(f"✅ Вы успешно зарегистрированы как мастер! Ваш ID: {master_id}")
-
+            for day in data.get("schedule", []):
+                if isinstance(day, dict) and "date" in day and "times" in day:
+                    times_clean = [str(t).strip() for t in day["times"] if str(t).strip()]
+                    if times_clean:
+                        c.execute("INSERT INTO schedule (master_id, date, time_slots) VALUES (?, ?, ?)",
+                                  (master_id, day["date"], json.dumps(times_clean)))
             conn.commit()
             conn.close()
+            await update.message.reply_text(f"✅ Мастер зарегистрирован! ID: {master_id}")
+
         else:
+            # Клиентская запись
             required = ["master_id", "name", "phone", "date", "time"]
             if not all(k in data for k in required):
                 await update.message.reply_text("❌ Неполные данные записи.")
