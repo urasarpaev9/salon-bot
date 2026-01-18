@@ -24,21 +24,27 @@ ALLOWED_MASTER_IDS = {961734387, 6704791903}  # ← замени на свои I
 
 # === Инициализация базы данных ===
 def init_db():
+    import os
+    # Удаляем старую базу, чтобы избежать проблем со структурой
+    if os.path.exists("salon.db"):
+        os.remove("salon.db")
+        print("🗑️ Старая база удалена")
+
     conn = sqlite3.connect('salon.db', check_same_thread=False)
     c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS masters (
+    c.execute('''CREATE TABLE masters (
         id INTEGER PRIMARY KEY,
         telegram_user_id INTEGER UNIQUE,
         name TEXT,
         photo_url TEXT,
         services TEXT
     )''')
-    c.execute('''CREATE TABLE IF NOT EXISTS schedule (
+    c.execute('''CREATE TABLE schedule (
         master_id INTEGER,
         date TEXT,
         time_slots TEXT
     )''')
-    c.execute('''CREATE TABLE IF NOT EXISTS bookings (
+    c.execute('''CREATE TABLE bookings (
         master_id INTEGER,
         client_name TEXT,
         client_phone TEXT,
@@ -47,6 +53,7 @@ def init_db():
     )''')
     conn.commit()
     conn.close()
+    print("✅ Новая база создана с правильной структурой")
 
 # === Flask API ===
 app_flask = Flask(__name__)
@@ -175,7 +182,6 @@ async def handle_webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 master_id = existing[0]
                 await update.message.reply_text(f"✅ Вы уже зарегистрированы! Ваш ID: {master_id}")
             else:
-                # Регистрируем нового мастера
                 c.execute("INSERT INTO masters (telegram_user_id, name, photo_url, services) VALUES (?, ?, ?, ?)",
                           (user_id, data["name"].strip(), data.get("photo_url", "").strip(), json.dumps(data.get("services", []))))
                 master_id = c.lastrowid
@@ -191,7 +197,6 @@ async def handle_webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE)
             conn.commit()
             conn.close()
         else:
-            # Клиентская запись
             required = ["master_id", "name", "phone", "date", "time"]
             if not all(k in data for k in required):
                 await update.message.reply_text("❌ Неполные данные записи.")
@@ -210,44 +215,20 @@ async def handle_webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE)
         traceback.print_exc()
         await update.message.reply_text("❌ Ошибка при обработке данных.")
 
-# === Запуск ===
-def init_db():
-    import os
-    if os.path.exists("salon.db"):
-        os.remove("salon.db")
-        print("🗑️ Старая база удалена")
+# === Функция запуска Flask ===
+def run_flask():
+    port = int(os.getenv("PORT", 10000))
+    app_flask.run(host='0.0.0.0', port=port)
 
-    conn = sqlite3.connect('salon.db', check_same_thread=False)
-    c = conn.cursor()
-    c.execute('''CREATE TABLE masters (
-        id INTEGER PRIMARY KEY,
-        telegram_user_id INTEGER UNIQUE,
-        name TEXT,
-        photo_url TEXT,
-        services TEXT
-    )''')
-    c.execute('''CREATE TABLE schedule (
-        master_id INTEGER,
-        date TEXT,
-        time_slots TEXT
-    )''')
-    c.execute('''CREATE TABLE bookings (
-        master_id INTEGER,
-        client_name TEXT,
-        client_phone TEXT,
-        date TEXT,
-        time TEXT
-    )''')
-    conn.commit()
-    conn.close()
-    print("✅ База создана")
-
+# === Основная функция ===
 def main():
-    init_db()  # ← ЕДИНСТВЕННЫЙ ВЫЗОВ
+    init_db()  # Создаём базу при старте
 
+    # Запускаем Flask в фоне
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
 
+    # Запускаем Telegram бота
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, handle_webapp_data))
