@@ -196,7 +196,10 @@ async def handle_webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("❌ Ошибка при обработке данных. Попробуйте снова.")
 
 # === Запуск ===
-def main():
+def run_flask():
+    port = int(os.getenv("PORT", 10000))
+    app_flask.run(host='0.0.0.0', port=port)
+
     # 👇 ВРЕМЕННЫЙ КОД: УДАЛЯЕМ СТАРУЮ БАЗУ 👇
     import os
     if os.path.exists("salon.db"):
@@ -204,6 +207,7 @@ def main():
         print("Старая база salon.db удалена для обновления структуры.")
     # 👆 ВРЕМЕННЫЙ КОД ЗАКАНЧИВАЕТСЯ 👆
 
+def main():
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
 
