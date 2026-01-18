@@ -59,7 +59,7 @@ def after_request(response):
 
 @app_flask.route('/api/masters')
 def api_masters():
-    conn = sqlite3.connect('salon.db')
+    conn = sqlite3.connect('salon.db', check_same_thread=False)
     conn.row_factory = sqlite3.Row
     masters = conn.execute("SELECT * FROM masters").fetchall()
     conn.close()
@@ -72,7 +72,7 @@ def api_masters():
 
 @app_flask.route('/api/available-slots/<int:master_id>')
 def api_available_slots(master_id):
-    conn = sqlite3.connect('salon.db')
+    conn = sqlite3.connect('salon.db', check_same_thread=False)
     c = conn.cursor()
     c.execute("SELECT date, time_slots FROM schedule WHERE master_id = ?", (master_id,))
     schedule_rows = c.fetchall()
@@ -94,7 +94,7 @@ def api_available_slots(master_id):
 
 @app_flask.route('/api/my-bookings-by-user/<int:user_id>')
 def api_my_bookings_by_user(user_id):
-    conn = sqlite3.connect('salon.db')
+    conn = sqlite3.connect('salon.db', check_same_thread=False)
     conn.row_factory = sqlite3.Row
     master_row = conn.execute(
         "SELECT id FROM masters WHERE telegram_user_id = ?", (user_id,)
@@ -165,25 +165,31 @@ async def handle_webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 await update.message.reply_text("❌ У вас нет прав на регистрацию мастера.")
                 return
 
-            if not data.get("name") or not data["name"].strip():
-                await update.message.reply_text("❌ Имя мастера не указано.")
-                return
-
-            conn = sqlite3.connect('salon.db')
+            conn = sqlite3.connect('salon.db', check_same_thread=False)
             c = conn.cursor()
-            c.execute("INSERT INTO masters (telegram_user_id, name, photo_url, services) VALUES (?, ?, ?, ?)",
-                      (user_id, data["name"].strip(), data.get("photo_url", "").strip(), json.dumps(data.get("services", []))))
-            master_id = c.lastrowid
 
-            for day in data.get("schedule", []):
-                if isinstance(day, dict) and "date" in day and "times" in day:
-                    times_clean = [str(t).strip() for t in day["times"] if str(t).strip()]
-                    if times_clean:
-                        c.execute("INSERT INTO schedule (master_id, date, time_slots) VALUES (?, ?, ?)",
-                                  (master_id, day["date"], json.dumps(times_clean)))
+            # Проверяем, не зарегистрирован ли уже
+            c.execute("SELECT id FROM masters WHERE telegram_user_id = ?", (user_id,))
+            existing = c.fetchone()
+            if existing:
+                master_id = existing[0]
+                await update.message.reply_text(f"✅ Вы уже зарегистрированы! Ваш ID: {master_id}")
+            else:
+                # Регистрируем нового мастера
+                c.execute("INSERT INTO masters (telegram_user_id, name, photo_url, services) VALUES (?, ?, ?, ?)",
+                          (user_id, data["name"].strip(), data.get("photo_url", "").strip(), json.dumps(data.get("services", []))))
+                master_id = c.lastrowid
+
+                for day in data.get("schedule", []):
+                    if isinstance(day, dict) and "date" in day and "times" in day:
+                        times_clean = [str(t).strip() for t in day["times"] if str(t).strip()]
+                        if times_clean:
+                            c.execute("INSERT INTO schedule (master_id, date, time_slots) VALUES (?, ?, ?)",
+                                      (master_id, day["date"], json.dumps(times_clean)))
+                await update.message.reply_text(f"✅ Вы успешно зарегистрированы как мастер! Ваш ID: {master_id}")
+
             conn.commit()
             conn.close()
-            await update.message.reply_text(f"✅ Вы успешно зарегистрированы как мастер! Ваш ID: {master_id}")
         else:
             # Клиентская запись
             required = ["master_id", "name", "phone", "date", "time"]
@@ -191,7 +197,7 @@ async def handle_webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 await update.message.reply_text("❌ Неполные данные записи.")
                 return
 
-            conn = sqlite3.connect('salon.db')
+            conn = sqlite3.connect('salon.db', check_same_thread=False)
             c = conn.cursor()
             c.execute("INSERT INTO bookings (master_id, client_name, client_phone, date, time) VALUES (?, ?, ?, ?, ?)",
                       (data["master_id"], data["name"], data["phone"], data["date"], data["time"].strip()))
@@ -199,10 +205,10 @@ async def handle_webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE)
             conn.close()
             await update.message.reply_text("✅ Вы успешно записаны!")
     except Exception as e:
-        print("💥 Ошибка обработки:", str(e))
+        print("💥 Ошибка:", str(e))
         import traceback
         traceback.print_exc()
-        await update.message.reply_text("❌ Ошибка при обработке данных. Попробуйте снова.")
+        await update.message.reply_text("❌ Ошибка при обработке данных.")
 
 # === Запуск ===
 def run_flask():
@@ -210,21 +216,15 @@ def run_flask():
     app_flask.run(host='0.0.0.0', port=port)
 
 def main():
-    import os
-    # Удаляем старую базу (временно, для исправления структуры)
-    if os.path.exists("salon.db"):
-        os.remove("salon.db")
-        print("🗑️ Старая база salon.db удалена")
-
-    # Создаём новую с правильной структурой
+    # Инициализация базы при старте
     init_db()
-    print("✅ База инициализирована: таблицы masters, schedule, bookings созданы")
+    print("✅ База данных инициализирована")
 
-    # Запускаем Flask в фоне
+    # Запуск Flask в фоне
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
 
-    # Запускаем Telegram бота
+    # Запуск Telegram бота
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, handle_webapp_data))
