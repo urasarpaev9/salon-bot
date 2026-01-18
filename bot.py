@@ -163,27 +163,42 @@ async def handle_webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE)
     try:
         user_id = update.effective_user.id
         raw_data = update.message.web_app_data.data
+        print("🔍 Получены сырые данные:", repr(raw_data))  # ← покажет спецсимволы
+
         data = json.loads(raw_data)
+        print("✅ Распарсено:", data)
 
         if data.get("is_master_registration"):
             if user_id not in ALLOWED_MASTER_IDS:
                 await update.message.reply_text("❌ У вас нет прав на регистрацию мастера.")
                 return
-            
+
+            # Валидация обязательных полей
+            if "name" not in data or not data["name"].strip():
+                raise ValueError("Имя не указано")
+            if "schedule" not in data or not isinstance(data["schedule"], list):
+                raise ValueError("Расписание повреждено")
+
             conn = sqlite3.connect('salon.db')
             c = conn.cursor()
-            # Сохраняем telegram_user_id!
             c.execute("INSERT INTO masters (telegram_user_id, name, photo_url, services) VALUES (?, ?, ?, ?)",
-                      (user_id, data["name"], data["photo_url"].strip(), json.dumps(data["services"])))
+                      (user_id, data["name"].strip(), data.get("photo_url", "").strip(), json.dumps(data.get("services", []))))
             master_id = c.lastrowid
+
             for day in data["schedule"]:
-                times_clean = [t.strip() for t in day["times"]]
+                if not isinstance(day, dict) or "date" not in day or "times" not in day:
+                    print("⚠️ Некорректный день в расписании:", day)
+                    continue
+                times_clean = [str(t).strip() for t in day["times"] if str(t).strip()]
+                if not times_clean:
+                    continue
                 c.execute("INSERT INTO schedule (master_id, date, time_slots) VALUES (?, ?, ?)",
                           (master_id, day["date"], json.dumps(times_clean)))
             conn.commit()
             conn.close()
-            await update.message.reply_text(f"✅ Вы успешно зарегистрированы как мастер! Ваш ID: {master_id}")
+            await update.message.reply_text(f"✅ Вы успешно зарегистрированы как мастер! ID: {master_id}")
         else:
+            # ... клиентская запись ...
             conn = sqlite3.connect('salon.db')
             c = conn.cursor()
             c.execute("INSERT INTO bookings (master_id, client_name, client_phone, date, time) VALUES (?, ?, ?, ?, ?)",
@@ -192,7 +207,9 @@ async def handle_webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE)
             conn.close()
             await update.message.reply_text("✅ Вы успешно записаны!")
     except Exception as e:
-        print("Ошибка:", e)
+        print("💥 ОШИБКА ОБРАБОТКИ:", str(e))
+        import traceback
+        traceback.print_exc()
         await update.message.reply_text("❌ Ошибка при обработке данных. Попробуйте снова.")
 
 # === Запуск ===
