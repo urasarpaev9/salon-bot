@@ -9,7 +9,7 @@ from telegram.ext import (
     Application,
     CommandHandler,
     MessageHandler,
-    CallbackQueryHandler,  # ← ПРАВИЛЬНО
+    CallbackQueryHandler,
     ContextTypes,
     filters
 )
@@ -20,13 +20,12 @@ if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN не задан в переменных окружения!")
 
 # Список разрешённых пользователей (только они могут стать мастерами)
-ALLOWED_MASTER_IDS = {961734387, 6704791903}  # ← ЗАМЕНИ НА СВОЙ TELEGRAM ID!
+ALLOWED_MASTER_IDS = {961734387, 6704791903}  # ← замени на свои ID
 
 # === Инициализация базы данных ===
 def init_db():
     conn = sqlite3.connect('salon.db', check_same_thread=False)
     c = conn.cursor()
-    # Добавлено поле telegram_user_id
     c.execute('''CREATE TABLE IF NOT EXISTS masters (
         id INTEGER PRIMARY KEY,
         telegram_user_id INTEGER UNIQUE,
@@ -48,8 +47,6 @@ def init_db():
     )''')
     conn.commit()
     conn.close()
-
-init_db()
 
 # === Flask API ===
 app_flask = Flask(__name__)
@@ -95,12 +92,10 @@ def api_available_slots(master_id):
             })
     return jsonify(result)
 
-# 👇 НОВЫЙ МАРШРУТ: записи по user_id 👇
 @app_flask.route('/api/my-bookings-by-user/<int:user_id>')
 def api_my_bookings_by_user(user_id):
     conn = sqlite3.connect('salon.db')
     conn.row_factory = sqlite3.Row
-    
     master_row = conn.execute(
         "SELECT id FROM masters WHERE telegram_user_id = ?", (user_id,)
     ).fetchone()
@@ -108,7 +103,7 @@ def api_my_bookings_by_user(user_id):
     if not master_row:
         conn.close()
         return jsonify([])
-    
+
     master_id = master_row["id"]
     bookings = conn.execute("""
         SELECT client_name, client_phone, date, time 
@@ -133,12 +128,12 @@ def home():
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     keyboard = [
-        [InlineKeyboardButton("Записаться", web_app={"url": "https://bot-regis.vercel.app"})]  # ← без пробелов
+        [InlineKeyboardButton("Записаться", web_app={"url": "https://bot-regis.vercel.app"})]
     ]
     
     if user_id in ALLOWED_MASTER_IDS:
         keyboard.append([InlineKeyboardButton("Стать мастером", callback_data="register")])
-        bookings_url = f"https://admin-panel-rho-indol.vercel.app/bookings.html?user_id={user_id}"  # ← без пробелов
+        bookings_url = f"https://admin-panel-rho-indol.vercel.app/bookings.html?user_id={user_id}"
         keyboard.append([InlineKeyboardButton("Мои записи", web_app={"url": bookings_url})])
     
     await update.message.reply_text(
@@ -163,21 +158,16 @@ async def handle_webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE)
     try:
         user_id = update.effective_user.id
         raw_data = update.message.web_app_data.data
-        print("🔍 Получены сырые данные:", repr(raw_data))  # ← покажет спецсимволы
-
         data = json.loads(raw_data)
-        print("✅ Распарсено:", data)
 
         if data.get("is_master_registration"):
             if user_id not in ALLOWED_MASTER_IDS:
                 await update.message.reply_text("❌ У вас нет прав на регистрацию мастера.")
                 return
 
-            # Валидация обязательных полей
-            if "name" not in data or not data["name"].strip():
-                raise ValueError("Имя не указано")
-            if "schedule" not in data or not isinstance(data["schedule"], list):
-                raise ValueError("Расписание повреждено")
+            if not data.get("name") or not data["name"].strip():
+                await update.message.reply_text("❌ Имя мастера не указано.")
+                return
 
             conn = sqlite3.connect('salon.db')
             c = conn.cursor()
@@ -185,20 +175,22 @@ async def handle_webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE)
                       (user_id, data["name"].strip(), data.get("photo_url", "").strip(), json.dumps(data.get("services", []))))
             master_id = c.lastrowid
 
-            for day in data["schedule"]:
-                if not isinstance(day, dict) or "date" not in day or "times" not in day:
-                    print("⚠️ Некорректный день в расписании:", day)
-                    continue
-                times_clean = [str(t).strip() for t in day["times"] if str(t).strip()]
-                if not times_clean:
-                    continue
-                c.execute("INSERT INTO schedule (master_id, date, time_slots) VALUES (?, ?, ?)",
-                          (master_id, day["date"], json.dumps(times_clean)))
+            for day in data.get("schedule", []):
+                if isinstance(day, dict) and "date" in day and "times" in day:
+                    times_clean = [str(t).strip() for t in day["times"] if str(t).strip()]
+                    if times_clean:
+                        c.execute("INSERT INTO schedule (master_id, date, time_slots) VALUES (?, ?, ?)",
+                                  (master_id, day["date"], json.dumps(times_clean)))
             conn.commit()
             conn.close()
-            await update.message.reply_text(f"✅ Вы успешно зарегистрированы как мастер! ID: {master_id}")
+            await update.message.reply_text(f"✅ Вы успешно зарегистрированы как мастер! Ваш ID: {master_id}")
         else:
-            # ... клиентская запись ...
+            # Клиентская запись
+            required = ["master_id", "name", "phone", "date", "time"]
+            if not all(k in data for k in required):
+                await update.message.reply_text("❌ Неполные данные записи.")
+                return
+
             conn = sqlite3.connect('salon.db')
             c = conn.cursor()
             c.execute("INSERT INTO bookings (master_id, client_name, client_phone, date, time) VALUES (?, ?, ?, ?, ?)",
@@ -207,50 +199,32 @@ async def handle_webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE)
             conn.close()
             await update.message.reply_text("✅ Вы успешно записаны!")
     except Exception as e:
-        print("💥 ОШИБКА ОБРАБОТКИ:", str(e))
+        print("💥 Ошибка обработки:", str(e))
         import traceback
         traceback.print_exc()
         await update.message.reply_text("❌ Ошибка при обработке данных. Попробуйте снова.")
 
-def init_db():
-    conn = sqlite3.connect('salon.db', check_same_thread=False)
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS masters (
-        id INTEGER PRIMARY KEY,
-        telegram_user_id INTEGER UNIQUE,
-        name TEXT,
-        photo_url TEXT,
-        services TEXT
-    )''')
-    c.execute('''CREATE TABLE IF NOT EXISTS schedule (
-        master_id INTEGER,
-        date TEXT,
-        time_slots TEXT
-    )''')
-    c.execute('''CREATE TABLE IF NOT EXISTS bookings (
-        master_id INTEGER,
-        client_name TEXT,
-        client_phone TEXT,
-        date TEXT,
-        time TEXT
-    )''')
-    conn.commit()
-    conn.close()
+# === Запуск ===
+def run_flask():
+    port = int(os.getenv("PORT", 10000))
+    app_flask.run(host='0.0.0.0', port=port)
 
 def main():
     import os
     # Удаляем старую базу (временно, для исправления структуры)
     if os.path.exists("salon.db"):
         os.remove("salon.db")
-        print("Старая база salon.db удалена")
+        print("🗑️ Старая база salon.db удалена")
 
-    # Создаём новую базу со всеми таблицами
+    # Создаём новую с правильной структурой
     init_db()
-    print("Новая база создана с таблицами: masters, schedule, bookings")
+    print("✅ База инициализирована: таблицы masters, schedule, bookings созданы")
 
+    # Запускаем Flask в фоне
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
 
+    # Запускаем Telegram бота
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, handle_webapp_data))
