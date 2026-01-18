@@ -207,7 +207,17 @@ def run_flask():
         print("Старая база salon.db удалена для обновления структуры.")
     # 👆 ВРЕМЕННЫЙ КОД ЗАКАНЧИВАЕТСЯ 👆
 
+def run_flask():
+    port = int(os.getenv("PORT", 10000))
+    app_flask.run(host='0.0.0.0', port=port)
+
 def main():
+    # 👇 УДАЛЯЕМ БАЗУ ДО ВСЕГО 👇
+    import os
+    if os.path.exists("salon.db"):
+        os.remove("salon.db")
+        print("Старая база salon.db удалена для обновления структуры.")
+
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
 
