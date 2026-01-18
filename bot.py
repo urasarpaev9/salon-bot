@@ -139,7 +139,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_id in ALLOWED_MASTER_IDS:
         keyboard.append([InlineKeyboardButton("Стать мастером", callback_data="register")])
         # Автоматически передаём user_id
-        bookings_url = f"https://admin-panel-rho-indol.vercel.app={user_id}"
+        bookings_url = f"https://admin-panel-rho-indol.vercel.app/bookings.html?user_id={user_id}"
         keyboard.append([InlineKeyboardButton("Мои записи", web_app={"url": bookings_url})])
     
     await update.message.reply_text(
