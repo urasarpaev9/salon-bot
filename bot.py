@@ -212,28 +212,41 @@ async def handle_webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE)
         traceback.print_exc()
         await update.message.reply_text("❌ Ошибка при обработке данных. Попробуйте снова.")
 
-# === Запуск ===
-def run_flask():
-    port = int(os.getenv("PORT", 10000))
-    app_flask.run(host='0.0.0.0', port=port)
-
-    # 👇 ВРЕМЕННЫЙ КОД: УДАЛЯЕМ СТАРУЮ БАЗУ 👇
-    import os
-    if os.path.exists("salon.db"):
-        os.remove("salon.db")
-        print("Старая база salon.db удалена для обновления структуры.")
-    # 👆 ВРЕМЕННЫЙ КОД ЗАКАНЧИВАЕТСЯ 👆
-
-def run_flask():
-    port = int(os.getenv("PORT", 10000))
-    app_flask.run(host='0.0.0.0', port=port)
+def init_db():
+    conn = sqlite3.connect('salon.db', check_same_thread=False)
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS masters (
+        id INTEGER PRIMARY KEY,
+        telegram_user_id INTEGER UNIQUE,
+        name TEXT,
+        photo_url TEXT,
+        services TEXT
+    )''')
+    c.execute('''CREATE TABLE IF NOT EXISTS schedule (
+        master_id INTEGER,
+        date TEXT,
+        time_slots TEXT
+    )''')
+    c.execute('''CREATE TABLE IF NOT EXISTS bookings (
+        master_id INTEGER,
+        client_name TEXT,
+        client_phone TEXT,
+        date TEXT,
+        time TEXT
+    )''')
+    conn.commit()
+    conn.close()
 
 def main():
-    # 👇 УДАЛЯЕМ БАЗУ ДО ВСЕГО 👇
     import os
+    # Удаляем старую базу (временно, для исправления структуры)
     if os.path.exists("salon.db"):
         os.remove("salon.db")
-        print("Старая база salon.db удалена для обновления структуры.")
+        print("Старая база salon.db удалена")
+
+    # Создаём новую базу со всеми таблицами
+    init_db()
+    print("Новая база создана с таблицами: masters, schedule, bookings")
 
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
